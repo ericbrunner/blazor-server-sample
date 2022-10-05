@@ -1,0 +1,157 @@
+﻿@page "/counter"
+@using System.Diagnostics.Eventing.Reader
+
+<PageTitle>Counter</PageTitle>
+
+<h1>Counter</h1>
+
+<p role="status">Current count: @currentCount</p>
+
+<button class="btn btn-primary" @onclick="IncrementCount">Click me</button>
+
+
+@if (RenderNullStringOutOfBoundary)
+{
+    @(RenderNullStringOutOfBoundary=false)
+    <p>@Name.ToLower();</p>
+}
+
+<ErrorBoundary @ref="errorBoundary">
+
+    @if (RenderNullStringInBoundary)
+    {
+        @(RenderNullStringInBoundary=false)
+        <p>@Name.ToLower();</p>
+    }
+
+    @{
+
+        async void BadMethod()
+        {
+            await Task.Delay(100);
+            throw new Exception(nameof(BadMethod));
+        }
+
+
+        async Task GoodMethod()
+        {
+            await Task.Delay(100);
+            throw new Exception(nameof(BadMethod));
+        }
+
+        if (ThrowMe1) GoodMethod();
+        if (ThrowMe2) BadMethod();
+    }
+</ErrorBoundary>
+
+<div>
+    <label>
+        <input type="checkbox" @onchange="OnThrowHandler1" />
+        Throw the non-breaking Exception?
+    </label>
+    <label>
+        <input type="checkbox" @onchange="OnThrowHandler2" />
+        Throw the breaking Exception?
+    </label>
+    <label>
+        <input type="checkbox" @onchange="OnThrowHandler3" />
+        Render Null String in ErrorBoundary?
+    </label>
+    <label>
+        <input type="checkbox" @onchange="OnThrowHandler4" />
+        Render Null String out of ErrorBoundary?
+    </label>
+</div>
+
+@code {
+    private ErrorBoundary errorBoundary;
+    private bool RenderNullStringInBoundary { get; set; }
+    private bool RenderNullStringOutOfBoundary { get; set; }
+    [Parameter]
+    public string Name { get; set; }
+
+    private int currentCount = 0;
+
+    private void IncrementCount()
+    {
+        errorBoundary?.Recover();
+        currentCount++;
+    }
+
+
+    #region Life-Cycle hooks
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+
+        AppDomain.CurrentDomain.UnhandledException += (sender, args) =>
+        {
+            System.Diagnostics.Debug.WriteLine("NEVER invoked.");
+        };
+        TaskScheduler.UnobservedTaskException += (s, e) =>
+        {
+            System.Diagnostics.Debug.WriteLine("NEVER invoked.");
+        };
+
+        Exception? prevUnhandledException = null;
+        AppDomain.CurrentDomain.FirstChanceException += (sender, args) =>
+        {
+            Exception? exception = args.Exception;
+            if (exception == null || exception.Equals(prevUnhandledException)) return;
+
+            prevUnhandledException = exception;
+            System.Diagnostics.Debug.WriteLine($"Gets invoked: {nameof(AppDomain.CurrentDomain.FirstChanceException)} {exception}");
+        };
+    }
+
+    #endregion
+
+    public bool ThrowMe1 { get; set; }
+    public bool ThrowMe2 { get; set; }
+
+    private void OnThrowHandler1()
+    {
+        errorBoundary?.Recover();
+
+        ThrowMe1 = !ThrowMe1;
+
+        if (ThrowMe1)
+        {
+            ThrowMe2 = false;
+        }
+    }
+
+    private void OnThrowHandler2()
+    {
+        errorBoundary?.Recover();
+
+        ThrowMe2 = !ThrowMe2;
+
+        if (ThrowMe2)
+        {
+            ThrowMe1 = false;
+        }
+    }
+
+    private void OnThrowHandler3(ChangeEventArgs args)
+    {
+        errorBoundary?.Recover();
+
+        if (args.Value is bool value)
+        {
+            RenderNullStringInBoundary = value;
+        }
+    }
+
+    private void OnThrowHandler4(ChangeEventArgs args)
+    {
+        errorBoundary?.Recover();
+
+        if (args.Value is bool value)
+        {
+            RenderNullStringOutOfBoundary = value;
+        }
+    }
+
+}
